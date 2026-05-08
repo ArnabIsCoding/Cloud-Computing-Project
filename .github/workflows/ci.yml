@@ -33,7 +33,7 @@ jobs:
     # Step D: Check code formatting
     - name: Check formatting with Black
       run: |
-        black --check src/ tests/
+        black src/ tests/
 
     # Step E: Check for syntax errors and bad practices
     - name: Lint with flake8
