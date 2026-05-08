@@ -9,8 +9,8 @@ mlflow==2.6.0
 
 # Streaming & Cloud (AWS S3 compatibility)
 kafka-python==2.0.2
-boto3==1.28.38
-s3fs==2023.6.0
+boto3
+s3fs
 
 # Development & Testing tools
 pytest==7.4.0
