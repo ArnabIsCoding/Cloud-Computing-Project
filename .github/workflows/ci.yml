@@ -45,5 +45,9 @@ jobs:
 
     # Step F: Run the unit tests we just wrote!
     - name: Run Unit Tests with pytest
+      env:
+        AWS_DEFAULT_REGION: "eu-west-1"
+        AWS_ACCESS_KEY_ID: "testing"
+        AWS_SECRET_ACCESS_KEY: "testing"
       run: |
         pytest tests/ -v
