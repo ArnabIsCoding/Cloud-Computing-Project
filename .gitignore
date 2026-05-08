@@ -1,0 +1,20 @@
+.DS_Store
+.serverless
+# Ignore all data files to prevent bloating the git repo
+data/**/*.csv
+data/**/*.parquet
+data/**/*.zip
+
+# Keep the directory structure intact
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/analytics/.gitkeep
+
+# Ignore virtual environments and python cache
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Ignore MLflow artifacts
+mlruns/

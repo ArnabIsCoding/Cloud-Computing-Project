@@ -1,0 +1,58 @@
+service: capstone-flight-pipeline
+
+frameworkVersion: ">=3.0.0"
+
+provider:
+  name: aws
+  runtime: python3.9
+  region: eu-west-1
+  memorySize: 1536
+  timeout: 300
+  environment:
+    # Explicitly pass the name of the worker lambda so the orchestrator can trigger it
+    TARGET_LAMBDA_NAME: ${self:service}-${sls:stage}-handle_zipfile
+  iam:
+    role:
+      statements:
+        # Secure S3 Permissions: Only allow read/write to the specific buckets
+        - Effect: Allow
+          Action:
+            - s3:GetObject
+            - s3:ListBucket
+          Resource:
+            - "arn:aws:s3:::your-source-bucket-name"
+            - "arn:aws:s3:::your-source-bucket-name/*"
+        - Effect: Allow
+          Action:
+            - s3:PutObject
+          Resource:
+            - "arn:aws:s3:::your-dest-bucket-name/*"
+        # Secure Lambda Permissions: Only allow triggering the specific worker function
+        - Effect: Allow
+          Action:
+            - lambda:InvokeFunction
+          Resource:
+            - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${sls:stage}-handle_zipfile
+
+# Standardize deployment packaging
+package:
+  patterns:
+    - '!node_modules/**'
+    - '!.venv/**'
+    - '../src/batch/**'
+
+functions:
+  get_zipfiles:
+    handler: src.batch.get_zipfiles.handler
+    description: Orchestrator that finds zip files and asynchronously triggers handlers.
+    # Optional: You can add an EventBridge schedule or S3 event trigger here
+    # events:
+    #   - s3:
+    #       bucket: your-source-bucket-name
+    #       event: s3:ObjectCreated:*
+    #       rules:
+    #         - suffix: .zip
+
+  handle_zipfile:
+    handler: src.batch.clean_data.handle_zipfile
+    description: Worker that extracts CSV from S3 zip and converts to partitioned Parquet/CSV.
