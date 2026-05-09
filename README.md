@@ -100,7 +100,10 @@ The pipeline is split into three core components:
 ### Phase 1: Environment Setup (WSL & Python)
 
 This project is designed to run in a Linux environment using WSL (Windows Subsystem for Linux).
-
+```
+touch data/raw/.gitkeep data/processed/.gitkeep data/analytics/.gitkeep data/analytics/visuals/.gitkeep
+wsl --install -d Ubuntu
+```
 1. Open your Ubuntu WSL terminal and navigate to the project folder.
 2. Install the required Java engine for PySpark:
 ```bash
