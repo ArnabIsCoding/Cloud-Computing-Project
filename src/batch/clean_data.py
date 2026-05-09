@@ -39,9 +39,7 @@ class S3FlightDataCleaner:
             for filename in z.namelist():
                 if filename.endswith('.csv'):
                     logger.info(f"Loading CSV file {filename} into memory.")
-                    # Read directly from the zip file into Pandas
                     with z.open(filename) as f:
-                        # Use usecols to only load the data we actually need into memory
                         df = pd.read_csv(f, usecols=SELECTED_FIELDS, low_memory=False)
                         dataframes.append(df)
 
@@ -52,20 +50,11 @@ class S3FlightDataCleaner:
 
     def write_partitions_to_s3(self, df: pd.DataFrame) -> Dict[str, Any]:
         """Groups data by Date and writes partitioned Parquet/CSV files back to S3."""
-        results = {
-            'written_lines': 0,
-            'written_files': []
-        }
-
-        # Pandas handles the grouping natively, replacing the huge nested dictionaries
+        results = {'written_lines': 0, 'written_files': []}
         grouped = df.groupby(['Year', 'Month', 'DayofMonth'])
 
         for (year, month, day), group_df in grouped:
-            # Modern data pipelines prefer Parquet, but we can stick to CSV if required
-            # Format: prefix/YYYY/MM/YYYY_MM_DD.csv
             output_key = f"{self.dest_prefix}/{year:04d}/{month:02d}/{year:04d}_{month:02d}_{day:02d}.csv"
-
-            # Write dataframe to a string buffer
             csv_buffer = io.StringIO()
             group_df.to_csv(csv_buffer, index=False)
 
@@ -78,10 +67,7 @@ class S3FlightDataCleaner:
             )
 
             results['written_lines'] += len(group_df)
-            results['written_files'].append({
-                'bucketname': self.dest_bucket,
-                'key': output_key
-            })
+            results['written_files'].append({'bucketname': self.dest_bucket, 'key': output_key})
 
         logger.info(f"Successfully partitioned and wrote {results['written_lines']} lines to S3.")
         return results
@@ -90,41 +76,56 @@ class S3FlightDataCleaner:
         """Executes the full extraction, transformation, and load (ETL) process."""
         try:
             df = self.download_and_extract_df(key)
-
-            # Additional cleaning logic can go here (e.g., dropping NaNs)
             initial_rows = len(df)
             df.dropna(subset=['Year', 'Month', 'DayofMonth'], inplace=True)
-
             self.write_partitions_to_s3(df)
-
             logger.info(f"Processing completed: Read {initial_rows} lines.")
             return True
         except Exception as e:
             logger.error(f"Error processing {key}: {str(e)}")
             return False
 
-
 def handle_zipfile(event: dict, context: Any) -> dict:
-    """
-    AWS Lambda entry point.
-    event is expected as dictionary:
-    {
-        'src-bucketname': <s3-bucket>,
-        'key': <location-of-zipfile>,
-        'dst-bucketname': <s3-bucket>,
-        'dst-key-prefix': <prefix>
-    }
-    """
+    """AWS Lambda entry point."""
     logger.info(f"Lambda Handler invoked for {event.get('src-bucketname')}/{event.get('key')}")
-
     cleaner = S3FlightDataCleaner(
         src_bucket=event['src-bucketname'],
         dest_bucket=event['dst-bucketname'],
         dest_prefix=event['dst-key-prefix']
     )
-
     success = cleaner.execute(key=event['key'])
+    return {'status': 'OK' if success else 'ERROR'}
 
-    return {
-        'status': 'OK' if success else 'ERROR'
-    }
+
+# ==========================================
+# LOCAL EXECUTION MODE (For Docker/WSL Testing)
+# ==========================================
+def run_local_cleaning():
+    """Runs the cleaning process locally without AWS S3."""
+    raw_path = "data/raw/2008.csv"
+    processed_dir = "data/processed"
+    out_path = f"{processed_dir}/cleaned_flights.parquet"
+
+    os.makedirs(processed_dir, exist_ok=True)
+
+    if not os.path.exists(raw_path):
+        print(f" Error: Could not find {raw_path}. Make sure it is copied over!")
+        return
+
+    print(f" [LOCAL MODE] Reading raw data from {raw_path}...")
+    df = pd.read_csv(raw_path, low_memory=False)
+
+    print(f" Cleaning {len(df)} rows...")
+    # Add dummy ArrDelay and DepDelay if they don't exist to prevent analytics from crashing
+    for col in ['ArrDelay', 'DepDelay']:
+        if col not in df.columns:
+            df[col] = 0.0
+        df[col] = df[col].fillna(0.0)
+
+    print(f" Saving optimized Parquet file to {out_path}...")
+    df.to_parquet(out_path, index=False)
+    print(" Local data cleaning complete!")
+
+if __name__ == "__main__":
+    # When you run `python src/batch/clean_data.py` in the terminal, it triggers this:
+    run_local_cleaning()

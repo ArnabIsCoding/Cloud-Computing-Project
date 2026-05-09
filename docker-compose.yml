@@ -8,7 +8,7 @@ services:
     volumes:
       - .:/app
     environment:
-      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MLFLOW_TRACKING_URI=http://mlflow:2000
     depends_on:
       - mlflow
       - kafka
@@ -19,12 +19,12 @@ services:
     image: python:3.9-slim
     container_name: mlflow_server
     ports:
-      - "5000:5000"
+      - "2000:2000"
     volumes:
       - ./mlruns:/mlruns
     command: >
       bash -c "pip install mlflow &&
-               mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlruns/mlflow.db"
+               mlflow server --host 0.0.0.0 --port 2000 --backend-store-uri sqlite:///mlruns/mlflow.db"
 
   # Streaming: Zookeeper (Required for Kafka)
   zookeeper:

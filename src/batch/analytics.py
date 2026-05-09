@@ -27,7 +27,10 @@ class FlightAnalytics:
         logger.info("Executing Group 1 Analytics...")
 
         # We only look at non-cancelled flights for these queries
-        active_flights = df.filter(col("Cancelled") == 0)
+        if "Cancelled" in df.columns:
+            active_flights = df.filter(col("Cancelled") == 0)
+        else:
+            active_flights = df
 
         # Question 1.1: Busiest Airports (Departures + Arrivals)
         departures = active_flights.groupBy("Origin").agg(count("FlightNum").alias("total_departing"))
@@ -39,7 +42,7 @@ class FlightAnalytics:
                 (col("total_departing") + col("total_arriving")).alias("total_flights")
             ).orderBy(col("total_flights").desc())
 
-        logger.info("Q1.1 Top 5 Busiest Airports:")
+        logger.info("\n--- Q1.1 Top 5 Busiest Airports ---")
         q1_1.show(5)
 
         # Question 1.2: Average Delay by Airline
@@ -47,7 +50,7 @@ class FlightAnalytics:
             .agg(round(avg("ArrDelay"), 2).alias("avg_delay")) \
             .orderBy(col("avg_delay").asc())
 
-        logger.info("Q1.2 Best Airlines by Average Arrival Delay:")
+        logger.info("\n--- Q1.2 Best Airlines by Average Arrival Delay ---")
         q1_2.show(5)
 
         # Question 1.3: Average Delay by Day of Week
@@ -55,7 +58,7 @@ class FlightAnalytics:
             .agg(round(avg("ArrDelay"), 2).alias("avg_delay")) \
             .orderBy(col("avg_delay").asc())
 
-        logger.info("Q1.3 Best Days of the Week to Fly:")
+        logger.info("\n--- Q1.3 Best Days of the Week to Fly ---")
         q1_3.show(7)
 
         return q1_1, q1_2, q1_3
@@ -64,7 +67,10 @@ class FlightAnalytics:
         """Runs the Group 2 ranking analytics queries (Window Functions)."""
         logger.info("Executing Group 2 Analytics...")
 
-        active_flights = df.filter((col("Cancelled") == 0) & (col("DepDelay").isNotNull()))
+        if "Cancelled" in df.columns:
+            active_flights = df.filter((col("Cancelled") == 0) & (col("DepDelay").isNotNull()))
+        else:
+            active_flights = df.filter(col("DepDelay").isNotNull())
 
         # Question 2.1: Top 10 Airlines by Airport (Lowest Departure Delay)
         window_spec_2_1 = Window.partitionBy("Origin").orderBy("avg_delay", "UniqueCarrier")
@@ -74,7 +80,7 @@ class FlightAnalytics:
             .withColumn("rank", rank().over(window_spec_2_1)) \
             .filter(col("rank") <= 10)
 
-        logger.info("Q2.1 Top Airlines at SFO (Example):")
+        logger.info("\n--- Q2.1 Top Airlines at SFO (Example) ---")
         q2_1.filter(col("Origin") == "SFO").show(5)
 
         # Question 2.2: Top 10 Destinations from each Airport (Lowest Delay)
@@ -85,13 +91,13 @@ class FlightAnalytics:
             .withColumn("rank", rank().over(window_spec_2_2)) \
             .filter(col("rank") <= 10)
 
-        logger.info("Q2.2 Best Destinations from SFO (Example):")
+        logger.info("\n--- Q2.2 Best Destinations from SFO (Example) ---")
         q2_2.filter(col("Origin") == "SFO").show(5)
 
         return q2_1, q2_2
 
     def save_results(self, df, output_path: str):
-        """Saves analytical tables to Parquet (Replacing DynamoDB)."""
+        """Saves analytical tables to Parquet."""
         logger.info(f"Saving results to {output_path}")
         df.write.mode("overwrite").parquet(output_path)
 
@@ -105,18 +111,23 @@ class FlightAnalytics:
         q1_1, q1_2, q1_3 = self.run_group_1_queries(df)
         q2_1, q2_2 = self.run_group_2_queries(df)
 
-        # Example of saving the results locally (which can be mapped to S3)
+        os.makedirs(output_dir, exist_ok=True)
         self.save_results(q1_1, f"{output_dir}/q1_1_busiest_airports.parquet")
         self.save_results(q2_1, f"{output_dir}/q2_1_top_airlines_by_airport.parquet")
+
+        # --- NEW: Extract features for the ML Pipeline ---
+        logger.info("Generating Machine Learning Feature Set...")
+        ml_features = df.select("Month", "DayOfWeek", "UniqueCarrier", "Origin", "Dest", "DepDelay", "ArrDelay").na.drop()
+        self.save_results(ml_features, f"{output_dir}/ml_features.parquet")
 
         logger.info("Analytics pipeline completed successfully.")
         self.spark.stop()
 
 if __name__ == "__main__":
-    # Ensure this points to the output of your clean_data.py script
     INPUT_FILE = "data/processed/cleaned_flights.parquet"
     OUTPUT_DIRECTORY = "data/analytics"
 
     analytics_job = FlightAnalytics()
-    # Uncomment to run when data is ready:
-    # analytics_job.execute(INPUT_FILE, OUTPUT_DIRECTORY)
+
+    # Actually executing it this time!
+    analytics_job.execute(INPUT_FILE, OUTPUT_DIRECTORY)
